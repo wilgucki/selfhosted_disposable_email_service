@@ -1,0 +1,323 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Timeout: 3
+    MemorySize: 128
+    Runtime: python3.8
+    CodeUri: lamdba_handlers/
+    Environment:
+      Variables:
+        SERVICE_NAME_PREFIX: !Ref ServiceNamePrefix
+
+Parameters:
+  ApiStageName:
+    Type: String
+    Default: dev
+  ServiceNamePrefix:
+    Type: String
+  EmailDomain:
+    Type: String
+  UserPoolAttributes:
+    Type: CommaDelimitedList
+    Default: "email"
+
+Resources:
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref ApiStageName
+#      Cors: "'*'"
+      Auth:
+        DefaultAuthorizer: CognitoAuth
+        Authorizers:
+          CognitoAuth:
+            AuthType: 'COGNITO_USER_POOLS'
+            UserPoolArn: !GetAtt UserPool.Arn
+            Identity:
+              Header: Auth
+
+  SESRuleSet:
+    Type: AWS::SES::ReceiptRuleSet
+    Properties:
+      RuleSetName: !Sub '${ServiceNamePrefix}-ruleset'
+
+  SESReceiptRule:
+    Type: AWS::SES::ReceiptRule
+    Properties:
+      RuleSetName: !Ref SESRuleSet
+      Rule:
+        Name: !Sub '${ServiceNamePrefix}-rule'
+        Enabled: true
+        ScanEnabled: true
+        TlsPolicy: Optional
+        Recipients:
+          - !Ref EmailDomain
+        Actions:
+          - S3Action:
+              BucketName: !Ref IncomingEmailsBucket
+              TopicArn: !Ref IncomingEmailsTopic
+
+  IncomingEmailsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ServiceNamePrefix}-incoming-emails'
+
+  IncomingEmailsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref IncomingEmailsBucket
+      PolicyDocument:
+        Statement:
+          - Action:
+              - s3:PutObject
+            Effect: Allow
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref IncomingEmailsBucket
+                - '/*'
+            Principal:
+              Service: ses.amazonaws.com
+
+  IncomingEmailsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ServiceNamePrefix}-incoming-emails'
+      Subscription:
+        -  Protocol: sqs
+           Endpoint: !GetAtt IncomingEmailsQueue.Arn
+
+  IncomingEmailsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref IncomingEmailsTopic
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - sns:Publish
+            Principal:
+              Service: ses.amazonaws.com
+            Resource: !Ref IncomingEmailsTopic
+            Condition:
+              StringEquals:
+                AWS:SourceOwner: !Ref 'AWS::AccountId'
+
+  IncomingEmailsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ServiceNamePrefix}-incoming-emails'
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt IncomingEmailsDLQ.Arn
+        maxReceiveCount: 2
+
+  IncomingEmailsQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref IncomingEmailsQueue
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - sqs:SendMessage
+              - sqs:ReceiveMessage
+            Principal:
+              Service: sns.amazonaws.com
+            Resource: !GetAtt IncomingEmailsQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref IncomingEmailsTopic
+
+  IncomingEmailsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ServiceNamePrefix}-dlq'
+
+  EmailsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: !Sub '${ServiceNamePrefix}_emails'
+      PrimaryKey:
+        Name: email_address
+        Type: String
+
+  AddEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ServiceNamePrefix}-email-add'
+      Handler: email_api.add
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EmailsTable
+      Events:
+        ApiAdd:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /emails
+            Method: POST
+
+  DeleteEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ServiceNamePrefix}-email-delete'
+      Handler: email_api.delete
+      Policies:
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:DeleteItem
+              Resource:
+                - !GetAtt EmailsTable.Arn
+      Events:
+        ApiDelete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /emails/{email}
+            Method: DELETE
+
+  ListEmailsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ServiceNamePrefix}-email-list'
+      Handler: email_api.emails
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref EmailsTable
+      Events:
+        ApiList:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /emails
+            Method: GET
+
+  EmailForwarderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ServiceNamePrefix}-forwarder-message'
+      Handler: email_forwarder.forward
+      Environment:
+        Variables:
+          EMAIL_DOMAIN: !Ref EmailDomain
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref EmailsTable
+        - S3ReadPolicy:
+            BucketName: !Ref IncomingEmailsBucket
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+              Resource:
+                - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
+      Events:
+        ForwardEmail:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt IncomingEmailsQueue.Arn
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${ServiceNamePrefix}-user-pool'
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+      UsernameAttributes:
+        - email
+      Schema:
+        - AttributeDataType: String
+          Name: email
+          Required: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub '${ServiceNamePrefix}-user-pool-client'
+      # TODO remove all redundant auth flows
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_CUSTOM_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      ReadAttributes: !Ref UserPoolAttributes
+      WriteAttributes: !Ref UserPoolAttributes
+
+  TokensTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: !Sub '${ServiceNamePrefix}_tokens'
+      PrimaryKey:
+        Name: user_email
+        Type: String
+
+  LoginFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ServiceNamePrefix}-auth-login'
+      Handler: auth.login
+      Environment:
+        Variables:
+          TOKENS_TABLE: !Ref TokensTable
+          USER_POOL_ID: !Ref UserPool
+          USER_POOL_CLIENT_ID: !Ref UserPoolClient
+      Policies:
+        - AmazonCognitoPowerUser
+        - AmazonSSMReadOnlyAccess # TODO limit access to required params only
+        - DynamoDBWritePolicy:
+            TableName: !Ref TokensTable
+      Events:
+        # TODO check if only one event can be used for both GET and POST requests
+        LoginGet:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LoginApi
+            Method: GET
+            Path: /login
+        LoginPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref LoginApi
+            Method: POST
+            Path: /login
+
+  LoginApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref ApiStageName
+
+# TODO add client(s) to manage emails (web, slack, cli, browser extensions, etc.)
+
+# TODO cron script to delete all unconfirmed emails
+# TODO cron script to refresh tokens automatically
+
+Outputs:
+  Api:
+    Value: !Join
+      - ''
+      - - 'https://'
+        - !Ref Api
+        - !Sub '.execute-api.${AWS::Region}.amazonaws.com/'
+        - !Ref ApiStageName
+  LoginApi:
+    Value: !Join
+      - ''
+      - - 'https://'
+        - !Ref LoginApi
+        - !Sub '.execute-api.${AWS::Region}.amazonaws.com/'
+        - !Ref ApiStageName
+        - '/login'
