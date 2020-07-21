@@ -42,6 +42,7 @@ def list_emails() -> List:
     table = get_table_instance(EMAILS_TABLE_NAME, TABLE_PREFIX)
     response = table.scan()
     emails = []
+    # TODO return forward to address
     if response['Count'] > 0:
         emails = [item['email_address'] for item in response['Items']]
 
