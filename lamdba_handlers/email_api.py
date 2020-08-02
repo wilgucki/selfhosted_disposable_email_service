@@ -8,7 +8,7 @@ from libs.validators import is_email_address_valid
 
 
 def emails(event, context):
-    return response(status_code=200, body=list_emails())
+    return response(status_code=200, body={'emails': list_emails()})
 
 
 def add(event, context):
