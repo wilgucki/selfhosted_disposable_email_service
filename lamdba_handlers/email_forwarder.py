@@ -26,28 +26,39 @@ def forward(event, context):
 
         email_object = s3_client.get_object(Bucket=bucket, Key=object_key)
         raw_email = email_object['Body'].read()
+        msg = email.message_from_bytes(raw_email)
+
+        body = ''
+        if msg.is_multipart():
+            for part in msg.walk():
+                # TODO make sure this is the best way of doing this
+                if part.get_content_type() != 'text/plain':
+                    continue
+
+                # TODO make sure that the message is the first on a list
+                body = part.get_payload(decode=True).decode()
+                break
+        else:
+            body = msg.get_payload(decode=True)
 
         for recipient in recipients:
             try:
+                LOGGER.debug(f'Forwarding message to {recipient}')
                 item = table.get_item(Key={'email_address': recipient})['Item']
-                print('### item')
 
                 if not item['verified']:
                     LOGGER.info(f'Email address {recipient} is not verified')
                     continue
 
-                msg = email.message_from_bytes(raw_email)
-
-                # TODO handle multipart messages
-
                 # TODO get message content type and set correct message body type (Text or Html)
+                LOGGER.debug('Sending message')
                 response = ses_client.send_email(
                     # TODO this email address should not be available for users
                     Source=f'no-reply@{os.environ["EMAIL_DOMAIN"]}',
                     Destination={'ToAddresses': [item['forward_to']]},
                     Message={
                         'Subject': {'Data': msg['Subject']},
-                        'Body': {'Text': {'Data': msg.get_payload()}}
+                        'Body': {'Text': {'Data': body}}
                     }
                 )
 
