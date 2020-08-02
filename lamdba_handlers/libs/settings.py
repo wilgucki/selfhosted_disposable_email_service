@@ -6,3 +6,4 @@ TABLE_PREFIX = os.environ['SERVICE_NAME_PREFIX']
 EMAILS_TABLE_NAME = 'emails'
 
 LOGGER = logging.getLogger()
+LOGGER.setLevel(os.getenv('LOG_LEVEL', 'INFO'))
