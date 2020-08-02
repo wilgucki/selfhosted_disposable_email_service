@@ -257,53 +257,9 @@ Resources:
       ReadAttributes: !Ref UserPoolAttributes
       WriteAttributes: !Ref UserPoolAttributes
 
-  TokensTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      TableName: !Sub '${ServiceNamePrefix}_tokens'
-      PrimaryKey:
-        Name: user_email
-        Type: String
-
-  LoginFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub '${ServiceNamePrefix}-auth-login'
-      Handler: auth.login
-      Environment:
-        Variables:
-          TOKENS_TABLE: !Ref TokensTable
-          USER_POOL_ID: !Ref UserPool
-          USER_POOL_CLIENT_ID: !Ref UserPoolClient
-      Policies:
-        - AmazonCognitoPowerUser
-        - AmazonSSMReadOnlyAccess # TODO limit access to required params only
-        - DynamoDBWritePolicy:
-            TableName: !Ref TokensTable
-      Events:
-        # TODO check if only one event can be used for both GET and POST requests
-        LoginGet:
-          Type: Api
-          Properties:
-            RestApiId: !Ref LoginApi
-            Method: GET
-            Path: /login
-        LoginPost:
-          Type: Api
-          Properties:
-            RestApiId: !Ref LoginApi
-            Method: POST
-            Path: /login
-
-  LoginApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      StageName: !Ref ApiStageName
-
 # TODO add client(s) to manage emails (web, slack, cli, browser extensions, etc.)
 
 # TODO cron script to delete all unconfirmed emails
-# TODO cron script to refresh tokens automatically
 
 Outputs:
   Api:
@@ -313,11 +269,3 @@ Outputs:
         - !Ref Api
         - !Sub '.execute-api.${AWS::Region}.amazonaws.com/'
         - !Ref ApiStageName
-  LoginApi:
-    Value: !Join
-      - ''
-      - - 'https://'
-        - !Ref LoginApi
-        - !Sub '.execute-api.${AWS::Region}.amazonaws.com/'
-        - !Ref ApiStageName
-        - '/login'
