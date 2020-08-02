@@ -53,10 +53,15 @@ def list_emails():
         click.echo('You are not logged in or your token has expired.', err=True)
         sys.exit(1)
 
-    emails = sorted(response.json())
-    if not emails:
+    if response.status_code != 200:
+        click.echo(f'Oops: {response.text}', err=True)
+        sys.exit(1)
+
+    emails_json = response.json()
+    if 'emails' not in emails_json:
         click.echo('No emails found')
     else:
+        emails = sorted(emails_json['emails'])
         for email in emails:
             click.echo(email)
 
