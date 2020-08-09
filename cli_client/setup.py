@@ -4,7 +4,10 @@
 
 from setuptools import setup, find_packages
 
-requirements = ['Click>=7.0', ]
+requirements = [
+    'Click==7.1.2',
+    'tabulate==0.8.7',
+]
 
 setup(
     author="Mac",
@@ -21,7 +24,7 @@ setup(
     description="Self-hosted disposable email service CLI client.",
     entry_points={
         'console_scripts': [
-            'shdes=cli_client.cli:shdes',
+            'shdes=cli_client.cli:shdes',  # TODO this needs better name
         ],
     },
     install_requires=requirements,

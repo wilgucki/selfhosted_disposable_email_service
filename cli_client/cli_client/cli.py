@@ -5,6 +5,7 @@ import sys
 import boto3
 import click
 import requests
+from tabulate import tabulate
 
 
 CONFIG_PATH = os.path.expanduser(os.path.join('~', '.sheds', 'config.json'))
@@ -61,9 +62,11 @@ def list_emails():
     if 'emails' not in emails_json:
         click.echo('No emails found')
     else:
-        emails = sorted(emails_json['emails'])
-        for email in emails:
-            click.echo(email)
+        header = ['Email Address', 'Forward To', 'Verified']
+        rows = sorted([list(email.values()) for email in emails_json['emails']], key=lambda item: item[0])
+        click.echo('\n')
+        click.echo(tabulate(rows, header))
+        click.echo('\n')
 
 
 @shdes.command()
