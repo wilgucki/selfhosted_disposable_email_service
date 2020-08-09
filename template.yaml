@@ -150,9 +150,19 @@ Resources:
     Properties:
       FunctionName: !Sub '${ServiceNamePrefix}-email-add'
       Handler: email_api.add
+      Environment:
+        Variables:
+          EMAIL_DOMAIN: !Ref EmailDomain
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref EmailsTable
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+              Resource:
+                - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
       Events:
         ApiAdd:
           Type: Api

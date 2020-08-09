@@ -35,7 +35,6 @@ def add_email(email_address: str, forward_to: str):
         }
     )
 
-    # TODO send verification link
     # TODO change message body to be more user friendly
     ses = boto3.client('ses')
     ses.send_email(
@@ -44,7 +43,7 @@ def add_email(email_address: str, forward_to: str):
             'ToAddresses': [forward_to]
         },
         Message={
-            'Subject': 'Verify forward to email address',
+            'Subject': {'Data': 'Verify "forward to" email address'},
             'Body': {
                 'Text': {
                     'Data': f'Verification code: {verification_code}'
@@ -88,6 +87,6 @@ def verify_email(email_address: str, verification_code: str):
 
     table.update_item(
         Key={'email_address': email_address},
-        UpdateExpression='SET verification_code=:verification_code, verified=:verified',
-        ExpressionAttributeValues={':verification_code': {'NULL': True}, ':verified': {'BOOL': True}}
+        UpdateExpression='SET verified = :verified, verification_code = :verification_code',
+        ExpressionAttributeValues={':verification_code': '', ':verified': True}
     )

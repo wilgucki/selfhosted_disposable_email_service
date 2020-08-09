@@ -36,7 +36,21 @@ def add_email(email, forward_to):
         click.echo('You are not logged in or your token has expired.', err=True)
         sys.exit(1)
 
-    click.echo('Email has been added')
+    click.echo('Email has been added. You need to verify it before you can use it. Verification code has been sent to '
+               'forward to address.')
+
+    verification_code = click.prompt('Verification code')
+
+    verification_response = requests.post(
+        f'{config["api_url"]}/verify',
+        data={'email_address': email, 'verification_code': verification_code},
+        headers={'Auth': config.get('id_token')}
+    )
+
+    if verification_response.status_code == 200:
+        click.echo('Forward to address has been confirmed.')
+    else:
+        click.echo(f'Something went wrong, {verification_response.json()["message"]}')
 
 
 @shdes.command()
@@ -147,6 +161,26 @@ def login():
             config['id_token'] = response['AuthenticationResult']['IdToken']
             json.dump(config, f, indent=4)
             click.echo('Logged in successfully')
+
+
+@shdes.command()
+@click.option('-e', '--email', required=True)
+@click.option('-c', '--verification-code', required=True)
+def verify(email, verification_code):
+    with open(CONFIG_PATH, 'r') as f:
+        config = json.load(f)
+
+    # TODO this is duplicated in the add_email function
+    response = requests.post(
+        f'{config["api_url"]}/verify',
+        data={'email_address': email, 'verification_code': verification_code},
+        headers={'Auth': config.get('id_token')}
+    )
+
+    if response.status_code == 200:
+        click.echo('Forward to address has been confirmed.')
+    else:
+        click.echo(f'Something went wrong, {response.json()["message"]}')
 
 
 if __name__ == '__main__':

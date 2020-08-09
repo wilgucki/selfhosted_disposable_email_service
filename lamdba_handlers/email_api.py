@@ -50,7 +50,7 @@ def delete(event, context):
 def verify_forward_to_address(event, context):
     post = dict(parse_qsl(event['body']))
     email_address = post['email_address']
-    verification_code = post['verification__code']
+    verification_code = post['verification_code']
 
     if not is_email_address_valid(email_address):
         return response(status_code=400, headers={'X-Status-Reason': 'Validation failed'},
