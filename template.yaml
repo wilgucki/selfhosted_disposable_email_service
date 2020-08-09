@@ -198,6 +198,22 @@ Resources:
             Path: /emails
             Method: GET
 
+  VerifyForwardToEmail:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ServiceNamePrefix}-verify-forward-to-email'
+      Handler: email_api.verify_forward_to_address
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EmailsTable
+      Events:
+        ApiVerify:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /verify
+            Method: POST
+
   EmailForwarderFunction:
     Type: AWS::Serverless::Function
     Properties:
