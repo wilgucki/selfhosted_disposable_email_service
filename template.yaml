@@ -278,12 +278,26 @@ Resources:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_USER_SRP_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
-      GenerateSecret: false
+      GenerateSecret: true
       PreventUserExistenceErrors: ENABLED
       ReadAttributes: !Ref UserPoolAttributes
       WriteAttributes: !Ref UserPoolAttributes
 
-# TODO add client(s) to manage emails (web, slack, cli, browser extensions, etc.)
+  WebClientFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ServiceNamePrefix}-webclient'
+      Handler: web_client.lambda_handler
+      Environment:
+        Variables:
+          USER_POLL_CLIENT_ID: !Ref UserPoolClient
+          USER_POOL_ID: !Ref UserPool
+      Policies:
+        - AmazonCognitoPowerUser
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub '/${ServiceNamePrefix}/webclient/secret-key'
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub '/${ServiceNamePrefix}/userpool/client-secret'
 
 # TODO cron script to delete all unconfirmed emails
 
