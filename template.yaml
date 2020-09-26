@@ -292,6 +292,7 @@ Resources:
         Variables:
           USER_POLL_CLIENT_ID: !Ref UserPoolClient
           USER_POOL_ID: !Ref UserPool
+          EMAIL_DOMAIN: !Ref EmailDomain
       Policies:
         - AmazonCognitoPowerUser
         - SSMParameterReadPolicy:

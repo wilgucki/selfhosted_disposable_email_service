@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <div class="container">
+        <div class="row justify-content-sm-center">
+            <div class="col-sm-4">
+                <form method="post" action="">
+                    <div class="form-group">
+                        <label for="code">Verification code</label>
+                        <input type="text" class="form-control" id="code" name="code">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Verify</button>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock %}

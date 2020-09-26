@@ -3,8 +3,10 @@ from functools import wraps
 
 from flask import Flask, g, redirect, render_template, request, session, url_for
 
-from libs.aws.cognito import login as signin
+from libs.aws.cognito import login as sign_in
 from libs.aws.ssm import get_param
+from libs.services.email import list_emails as list_emails_service, add_email as add_email_service, \
+    delete_email as delete_email_service, verify_email as verify_email_service
 
 
 def login_required(f):
@@ -39,8 +41,8 @@ def login():
     message = None
     if request.method == 'POST':
         try:
-            result = signin(email=request.form['email'], password=request.form['password'],
-                            pool_id=os.environ['USER_POOL_ID'])
+            result = sign_in(email=request.form['email'], password=request.form['password'],
+                             pool_id=os.environ['USER_POOL_ID'])
             session['logged_in'] = True
             session['user_email'] = request.form['email']
             session['user_access_token'] = result['AuthenticationResult']['AccessToken']
@@ -60,19 +62,42 @@ def logout():
     return redirect(url_for('index'))
 
 
-@app.route('/emails/list')
+@app.route('/emails')
 @login_required
 def list_emails():
-    return 'list emails'
+    emails = list_emails_service()
+    return render_template('email_list.html', emails=emails)
 
 
 @app.route('/emails/add', methods=['GET', 'POST'])
 @login_required
 def add_email():
-    return 'add email'
+    if request.method == 'POST':
+        # TODO handle exceptions
+        add_email_service(request.form['email'], request.form['forward_to'])
+        return redirect(url_for('list_emails'))
+
+    return render_template('add_email.html')
 
 
 @app.route('/emails/delete/<email>')
 @login_required
 def delete_email(email):
-    return 'delete email'
+    # TODO confirm email deletion
+    delete_email_service(email)
+    return redirect(url_for('list_emails'))
+
+
+@app.route('/emails/verify/<email>', defaults={'code': None}, methods=['GET', 'POST'])
+@app.route('/emails/verify/<email>/<code>')
+def verify_email_address(email, code):
+    if code is None and request.method == 'GET':
+        return render_template('verify_code.html')
+
+    if request.method == 'POST':
+        # TODO validate this
+        code = request.form['code']
+
+    if code is not None:
+        verify_email_service(email, code)
+        return redirect(url_for('list_emails'))
