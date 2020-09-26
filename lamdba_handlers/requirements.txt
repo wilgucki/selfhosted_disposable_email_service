@@ -1,1 +1,3 @@
 Jinja2==2.11.2
+Flask==1.1.2
+aws_wsgi==0.2.7
